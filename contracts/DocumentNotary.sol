@@ -23,12 +23,6 @@ contract DocumentNotary {
         string description
     );
 
-    event DocumentVerified(
-        bytes32 indexed docHash,
-        bool exists,
-        address indexed verifiedBy
-    );
-
     /// @notice Notarize a document hash
     function notarize(bytes32 docHash, string calldata description) external {
         require(docHash != bytes32(0), "Invalid hash");
@@ -47,11 +41,34 @@ contract DocumentNotary {
         emit DocumentNotarized(docHash, msg.sender, block.timestamp, description);
     }
 
-    /// @notice Check if a hash has been notarized
-    function verify(bytes32 docHash) external returns (bool exists, address submitter, uint256 timestamp, string memory description) {
+    /// @notice Check if a hash has been notarized (view, free)
+    function verify(bytes32 docHash)
+        external
+        view
+        returns (
+            bool exists,
+            address submitter,
+            uint256 timestamp,
+            string memory description
+        )
+    {
         Document memory doc = documents[docHash];
-        emit DocumentVerified(docHash, doc.exists, msg.sender);
         return (doc.exists, doc.submitter, doc.timestamp, doc.description);
+    }
+
+    /// @notice Get full document record
+    function getDocument(bytes32 docHash)
+        external
+        view
+        returns (
+            address submitter,
+            uint256 timestamp,
+            string memory description,
+            bool exists
+        )
+    {
+        Document memory doc = documents[docHash];
+        return (doc.submitter, doc.timestamp, doc.description, doc.exists);
     }
 
     /// @notice Get all document hashes submitted by an address

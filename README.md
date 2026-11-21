@@ -6,12 +6,17 @@ Timestamp documents, contracts, IP, or any file forever on-chain. Only the SHA-2
 
 Perfect for legal teams, researchers, artists, and compliance workflows.
 
+![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
+![Solidity](https://img.shields.io/badge/solidity-0.8.19-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+
 ## Why ChainNotary?
 
 - **Real-world usable**: CLI + REST API that works with any Ethereum network (mainnet, Sepolia, local Ganache/Anvil).
 - **Privacy-first**: Never uploads document content, only cryptographic hash.
 - **Owner-tracked**: Records submitter address, timestamp, and optional description.
 - **Verification in one call**: Instantly check if a file was notarized and by whom.
+- **List by submitter**: Retrieve all documents an address has notarized.
 - **Open-source, auditable, extensible**.
 
 ## Architecture
@@ -37,15 +42,15 @@ pip install -r requirements.txt
 ```
 
 ### 3. Configure
-Create `.env`:
+Copy `.env.example` to `.env` and fill in:
 ```
 ETH_RPC_URL=https://sepolia.infura.io/v3/YOUR_KEY
 PRIVATE_KEY=0xYourPrivateKey
 CONTRACT_ADDRESS=0x...  # after deployment
 ```
 
-### 4. Deploy Contract (Hardhat/Foundry recommended)
-See `contracts/DocumentNotary.sol`. Deploy and set `CONTRACT_ADDRESS`.
+### 4. Deploy Contract
+See `contracts/DocumentNotary.sol` and `DEPLOY.md`. Deploy (Remix, Hardhat, or Foundry) and set `CONTRACT_ADDRESS`.
 
 ### 5. Notarize a document
 ```bash
@@ -57,19 +62,26 @@ python python/notary_client.py notarize ./important-contract.pdf "Q4 2026 Partne
 python python/notary_client.py verify ./important-contract.pdf
 ```
 
-### 7. Run API
+### 7. List documents by address
+```bash
+python python/notary_client.py list 0xYourAddress
+```
+
+### 8. Run API
 ```bash
 uvicorn python.app:app --reload
 ```
+Endpoints: `POST /notarize`, `POST /verify`, `GET /documents/{address}`, `GET /`.
 
 ## Features Roadmap
 - [x] Core Solidity contract with events
-- [x] Python CLI client (web3.py)
-- [x] FastAPI backend
+- [x] Python CLI client (web3.py) with list support
+- [x] FastAPI backend with full endpoints
 - [ ] Merkle batching for gas savings
 - [ ] Frontend (React + wagmi)
 - [ ] Multi-chain support (Polygon, Base)
 - [ ] IPFS integration for optional metadata
+- [ ] Unit tests + coverage
 
 ## Live Demo & Verification
 (Contract to be deployed on Sepolia — update README with address and Etherscan link.)

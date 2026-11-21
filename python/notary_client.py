@@ -12,6 +12,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from web3 import Web3
+from web3.exceptions import ContractLogicError
 
 load_dotenv()
 
@@ -37,7 +38,14 @@ ABI = [
             {"name": "timestamp", "type": "uint256"},
             {"name": "description", "type": "string"},
         ],
-        "stateMutability": "nonpayable",
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "submitter", "type": "address"}],
+        "name": "getDocumentsBySubmitter",
+        "outputs": [{"name": "", "type": "bytes32[]"}],
+        "stateMutability": "view",
         "type": "function",
     },
 ]
@@ -68,6 +76,10 @@ def notarize(file_path: str, description: str):
         print(f"File not found: {file_path}")
         sys.exit(1)
 
+    if not PRIVATE_KEY:
+        print("PRIVATE_KEY not set in .env")
+        sys.exit(1)
+
     doc_hash = sha256_file(path)
     print(f"Document SHA-256: 0x{doc_hash.hex()}")
 
@@ -75,19 +87,32 @@ def notarize(file_path: str, description: str):
     contract = get_contract(w3)
     account = w3.eth.account.from_key(PRIVATE_KEY)
 
-    tx = contract.functions.notarize(doc_hash, description).build_transaction({
-        "from": account.address,
-        "nonce": w3.eth.get_transaction_count(account.address),
-        "gas": 200_000,
-        "gasPrice": w3.eth.gas_price,
-    })
+    try:
+        tx = contract.functions.notarize(doc_hash, description).build_transaction({
+            "from": account.address,
+            "nonce": w3.eth.get_transaction_count(account.address),
+            "gas": 250_000,
+            "gasPrice": w3.eth.gas_price,
+        })
 
-    signed = account.sign_transaction(tx)
-    tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        signed = account.sign_transaction(tx)
+        # web3.py 6.x uses rawTransaction
+        raw = getattr(signed, "rawTransaction", None) or getattr(signed, "raw_transaction", None)
+        if raw is None:
+            raise RuntimeError("Could not extract raw transaction bytes")
 
-    print(f"Notarized! Tx: {tx_hash.hex()}")
-    print(f"Block: {receipt.blockNumber}")
+        tx_hash = w3.eth.send_raw_transaction(raw)
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+
+        print(f"Notarized! Tx: {tx_hash.hex()}")
+        print(f"Block: {receipt.blockNumber}")
+        print(f"Gas used: {receipt.gasUsed}")
+    except ContractLogicError as e:
+        print(f"Contract error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Transaction failed: {e}")
+        sys.exit(1)
 
 def verify(file_path: str):
     path = Path(file_path)
@@ -101,17 +126,33 @@ def verify(file_path: str):
     w3 = get_web3()
     contract = get_contract(w3)
 
-    # Note: verify is nonpayable; in practice use .call() for view-like behavior
-    result = contract.functions.verify(doc_hash).call()
-    exists, submitter, timestamp, description = result
+    try:
+        exists, submitter, timestamp, description = contract.functions.verify(doc_hash).call()
 
-    if exists:
-        print("✅ Document verified on-chain!")
-        print(f"   Submitter: {submitter}")
-        print(f"   Timestamp: {timestamp}")
-        print(f"   Description: {description}")
-    else:
-        print("❌ Document not found on-chain.")
+        if exists:
+            print("\u2705 Document verified on-chain!")
+            print(f"   Submitter: {submitter}")
+            print(f"   Timestamp: {timestamp}")
+            print(f"   Description: {description}")
+        else:
+            print("\u274c Document not found on-chain.")
+    except Exception as e:
+        print(f"Verification failed: {e}")
+        sys.exit(1)
+
+def list_documents(address: str):
+    w3 = get_web3()
+    contract = get_contract(w3)
+    checksum = Web3.to_checksum_address(address)
+
+    try:
+        hashes = contract.functions.getDocumentsBySubmitter(checksum).call()
+        print(f"Documents submitted by {checksum}: {len(hashes)}")
+        for h in hashes:
+            print(f"  0x{h.hex()}")
+    except Exception as e:
+        print(f"List failed: {e}")
+        sys.exit(1)
 
 def main():
     parser = argparse.ArgumentParser(description="ChainNotary CLI")
@@ -124,12 +165,17 @@ def main():
     v = sub.add_parser("verify", help="Verify a file")
     v.add_argument("file")
 
+    l = sub.add_parser("list", help="List documents by submitter address")
+    l.add_argument("address")
+
     args = parser.parse_args()
 
     if args.command == "notarize":
         notarize(args.file, args.description)
     elif args.command == "verify":
         verify(args.file)
+    elif args.command == "list":
+        list_documents(args.address)
     else:
         parser.print_help()
 
